@@ -60,6 +60,9 @@ export class PerplexityAdapter extends BaseAdapterPlugin {
   // Instance tracking for debugging
   private static instanceCount = 0;
   private instanceId: number;
+  
+  // Style injection tracking
+  private adapterStylesInjected: boolean = false;
 
   constructor() {
     super();
@@ -95,6 +98,9 @@ export class PerplexityAdapter extends BaseAdapterPlugin {
 
     await super.activate();
     this.context.logger.info(`Activating Perplexity adapter instance #${this.instanceId}...`);
+
+    // Inject Perplexity-specific button styles
+    this.injectPerplexityButtonStyles();
 
     // Set up DOM observers and UI integration
     this.setupDOMObservers();
@@ -147,6 +153,13 @@ export class PerplexityAdapter extends BaseAdapterPlugin {
     if (this.popoverCheckInterval) {
       clearInterval(this.popoverCheckInterval);
       this.popoverCheckInterval = null;
+    }
+
+    // Remove injected adapter styles
+    const styleElement = document.getElementById('mcp-perplexity-button-styles');
+    if (styleElement) {
+      styleElement.remove();
+      this.adapterStylesInjected = false;
     }
 
     // Final cleanup
@@ -924,11 +937,21 @@ export class PerplexityAdapter extends BaseAdapterPlugin {
             // Create toggle state manager that integrates with new stores
             const toggleStateManager = this.createToggleStateManager();
 
+            // Create adapter button configuration
+            const adapterButtonConfig = {
+              className: 'mcp-perplexity-button-base',
+              contentClassName: 'mcp-perplexity-button-content',
+              textClassName: 'mcp-perplexity-button-text',
+              activeClassName: 'mcp-button-active'
+            };
+
             // Create React root and render
             const root = ReactDOM.createRoot(container);
             root.render(
               React.createElement(MCPPopover, {
-                toggleStateManager: toggleStateManager
+                toggleStateManager: toggleStateManager,
+                adapterButtonConfig: adapterButtonConfig,
+                adapterName: this.name
               })
             );
 
@@ -1164,6 +1187,10 @@ export class PerplexityAdapter extends BaseAdapterPlugin {
     // Re-check support and re-inject UI if needed
     const stillSupported = this.isSupported();
     if (stillSupported) {
+      // Re-inject styles on page navigation
+      this.adapterStylesInjected = false;
+      this.injectPerplexityButtonStyles();
+
       // Re-setup UI integration after page change
       setTimeout(() => {
         this.setupUIIntegration();
@@ -1209,5 +1236,214 @@ export class PerplexityAdapter extends BaseAdapterPlugin {
     tools.forEach(tool => {
       this.context.stores.tool?.addDetectedTool?.(tool);
     });
+  }
+
+  // Perplexity-specific button styling methods
+
+  /**
+   * Get Perplexity-specific button styles that match the platform's segmented control design system
+   */
+  private getPerplexityButtonStyles(): string {
+    return `
+      .mcp-perplexity-button-base {
+        /* Base button styling matching Perplexity's segmented-control design */
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        outline: none;
+        cursor: pointer;
+        white-space: nowrap;
+        user-select: none;
+        border-radius: 8px;
+        height: 32px;
+        min-width: 36px;
+        padding: 0 0px;
+        gap: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        background: transparent;
+        transition: all 300ms ease-out;
+        
+        /* Default colors - using Perplexity's actual theme colors */
+        color: oklch(var(--text-color-200, 50.2% 0.008 106.677)); /* Inactive text */
+        
+        /* Focus states */
+        &:focus {
+          outline: none;
+        }
+        
+        /* Hover states */
+        &:hover {
+          color: oklch(var(--text-color-100, 30.4% 0.04 213.681)); /* Active text on hover */
+        }
+        
+        /* Active/selected state - matches the checked segmented control */
+        &.mcp-button-active {
+          color: oklch(var(--text-super-color-100, 55.3% 0.086 208.538)); /* Super color for active state */
+        }
+        
+        /* Active button overlay styling (matches data-state="checked" div) */
+        &.mcp-button-active::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          border-radius: 8px;
+          border: 1px solid oklch(var(--text-super-color-100, 55.3% 0.086 208.538));
+          background-color: oklch(0.963 0.007 106.523); /* Light background */
+          box-shadow: 0 1px 3px 0 oklch(var(--text-super-color-100, 55.3% 0.086 208.538) / 0.3);
+          transition: all 300ms ease-out;
+          opacity: 1;
+        }
+      }
+      
+      /* Dark mode support */
+      @media (prefers-color-scheme: dark) {
+        .mcp-perplexity-button-base {
+          color: oklch(var(--dark-text-color-200, 65.3% 0.005 197.042)); /* Dark mode inactive text */
+          
+          &:hover {
+            color: oklch(var(--dark-text-color-100, 93% 0.003 106.451)); /* Dark mode hover text */
+          }
+          
+          &.mcp-button-active {
+            color: oklch(var(--text-super-color-100, 55.3% 0.086 208.538)); /* Keep super color in dark mode */
+          }
+          
+          &.mcp-button-active::before {
+            background-color: oklch(var(--lt-color-text-dark, 0.113 0.005 247.858)); /* Dark background equivalent */
+            border-color: oklch(var(--text-super-color-100, 55.3% 0.086 208.538));
+            box-shadow: 0 1px 3px 0 oklch(var(--text-super-color-100, 55.3% 0.086 208.538) / 0.2);
+          }
+        }
+      }
+      
+      .mcp-perplexity-button-content {
+        /* Content container styling - matches the inner div structure */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-width: 0;
+        font-weight: 500;
+        position: relative;
+        z-index: 10; /* matches relative z-10 */
+        height: 32px;
+        min-width: 36px;
+        padding: 4px 10px; /* matches py-xs px-2.5 equivalent */
+      }
+      
+      .mcp-perplexity-button-text {
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.2;
+        color: inherit; /* Inherit color from parent */
+      }
+      
+      /* Icon styling within button */
+      .mcp-perplexity-button-base svg,
+      .mcp-perplexity-button-base img {
+        width: 16px;
+        height: 16px;
+        transition: all 300ms ease-out;
+        flex-shrink: 0;
+      }
+      
+      .mcp-perplexity-button-base img {
+        border-radius: 50%;
+        margin-right: 1px;
+      }
+      
+      /* Integration with Perplexity's button group layout */
+      .gap-xs .mcp-perplexity-button-base,
+      .gap-sm .mcp-perplexity-button-base,
+      .flex.items-center .mcp-perplexity-button-base {
+        margin: 0 2px;
+      }
+      
+      /* Special styling for group context (matches p-two flex items-center structure) */
+      .p-two .mcp-perplexity-button-base,
+      [class*="p-"] .mcp-perplexity-button-base {
+        margin: 0 1px;
+      }
+      
+      /* Focus-visible styling for accessibility */
+      .mcp-perplexity-button-base:focus-visible {
+        outline: 2px solid oklch(var(--text-super-color-100, 55.3% 0.086 208.538));
+        outline-offset: 2px;
+        outline-style: dashed;
+      }
+      
+      .mcp-perplexity-button-base:focus-visible::before {
+        border-style: dashed !important;
+      }
+      
+      /* Responsive adjustments */
+      @media (max-width: 640px) {
+        .mcp-perplexity-button-base {
+          height: 28px;
+          min-width: 32px;
+          padding: 0 8px;
+          font-size: 13px;
+        }
+        
+        .mcp-perplexity-button-content {
+          height: 28px;
+          min-width: 32px;
+          padding: 2px 8px;
+        }
+        
+        .mcp-perplexity-button-base svg,
+        .mcp-perplexity-button-base img {
+          width: 14px;
+          height: 14px;
+        }
+        
+        /* Adjust ring size for mobile */
+        .mcp-perplexity-button-base.mcp-button-active::before {
+          border-width: 1px; /* Keep consistent border width on mobile */
+        }
+      }
+      
+      /* CSS custom properties for Perplexity theming */
+      :root {
+        --text-color-100: 30.4% 0.04 213.681;
+        --text-color-200: 50.2% 0.008 106.677;
+        --text-super-color-100: 55.3% 0.086 208.538;
+        --text-max-color-100: 0.77 0.1629 60.28;
+        --dark-text-color-100: 93% 0.003 106.451;
+        --dark-text-color-200: 65.3% 0.005 197.042;
+        --light-text-color-100: 30.4% 0.04 213.681;
+        --lt-color-text-dark: 0.113 0.005 247.858;
+        --lt-color-text-default: 0.196 0.007 247.858;
+        --lt-color-text-light: 0.373 0.008 247.858;
+        --lt-color-text-very-light: 0.559 0.005 247.858;
+      }
+    `;
+  }
+
+  /**
+   * Inject Perplexity-specific button styles into the page
+   */
+  private injectPerplexityButtonStyles(): void {
+    if (this.adapterStylesInjected) return;
+    
+    try {
+      const styleId = 'mcp-perplexity-button-styles';
+      const existingStyles = document.getElementById(styleId);
+      if (existingStyles) existingStyles.remove();
+      
+      const styleElement = document.createElement('style');
+      styleElement.id = styleId;
+      styleElement.textContent = this.getPerplexityButtonStyles();
+      document.head.appendChild(styleElement);
+      
+      this.adapterStylesInjected = true;
+      this.context.logger.info('Perplexity button styles injected successfully');
+    } catch (error) {
+      this.context.logger.error('Failed to inject Perplexity button styles:', error);
+    }
   }
 }
